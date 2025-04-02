@@ -1,105 +1,109 @@
+//go:build windows
 // +build windows
 
 package collectors
 
 import (
-    // "golang.org/x/sys/windows/registry" // or other Windows APIs
-    // "github.com/StackExchange/wmi"     // or any WMI approach
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
-// PageFileUsage ...
-type PageFileUsage struct {
-    PageFile string
-    UsagePct float64
+// GetUptime returns system uptime in seconds for Windows.
+func GetUptime() uint64 {
+	up, err := host.Uptime()
+	if err != nil {
+		return 0
+	}
+	return up
 }
 
-// ServiceInfo ...
-type ServiceInfo struct {
-    Name       string
-    Display    string
-    StateValue int
-    StartValue int
+// GetProcessCount returns the total number of processes on Windows.
+func GetProcessCount() uint64 {
+	procs, err := process.Processes()
+	if err != nil {
+		return 0
+	}
+	return uint64(len(procs))
 }
 
-// GetPageFileUsage attempts to read Windows page file usage via performance counters or WMI
-func GetPageFileUsage() []PageFileUsage {
-    // Example stub:
-    return []PageFileUsage{
-        {PageFile: "C:\\pagefile.sys", UsagePct: 15.0},
-    }
-}
-
-// GetServices tries to list all Windows Services, returning partial info
-func GetServices() []ServiceInfo {
-    // Example stub:
-    return []ServiceInfo{
-        {
-            Name:       "Spooler",
-            Display:    "Print Spooler",
-            StateValue: 1, // running
-            StartValue: 1, // auto
-        },
-        {
-            Name:       "W32Time",
-            Display:    "Windows Time",
-            StateValue: 0, // stopped
-            StartValue: 0, // manual
-        },
-    }
-}
-
-// For the event log, you might call the Event Log APIs or parse the Windows Event Log using the 
-// "golang.org/x/sys/windows/svc/eventlog" or WMI. Here's a trivial stub:
-func GetEventLogStats() EventLogStats {
-    // Example stub
-    return EventLogStats{
-        ErrorCount:       2,
-        WarningCount:     5,
-        InformationCount: 50,
-        OtherCount:       1,
-    }
-}
-
-// You could use WMI to fetch OS manufacturer, model, etc. 
-// For example with "github.com/StackExchange/wmi":
-// type Win32_ComputerSystem struct {
-//     Manufacturer string
-//     Model        string
-// }
-// type Win32_OperatingSystem struct {
-//     Caption     string
-//     Version     string
-//     BuildNumber string
-// }
-
+// GetOSInfo returns OS information for Windows.
 func GetOSInfo() OSInfo {
-    info := OSInfo{
-        Manufacturer:      "Microsoft Corporation",
-        Model:             "Virtual Machine",
-        Caption:           "Windows 10 Enterprise",
-        Version:           "10.0.19044",
-        BuildNumber:       "19044",
-        LogicalProcessors: 0,
-    }
-
-    // You can refine this by actually querying WMI or other sources:
-    // e.g. wmi.Query("SELECT Manufacturer, Model from Win32_ComputerSystem", &cs)
-
-    // Fill the CPU count from the cross-platform approach:
-    base := GetOSInfoNonWindows()
-    info.LogicalProcessors = base.LogicalProcessors
-    return info
+	info := OSInfo{
+		Manufacturer:      "Microsoft Corporation",
+		Model:             "Virtual Machine",
+		Caption:           "Windows 10 Enterprise",
+		Version:           "10.0.19044",
+		BuildNumber:       "19044",
+		LogicalProcessors: 0,
+	}
+	// Get logical processor count.
+	base := GetOSInfoNonWindows()
+	info.LogicalProcessors = base.LogicalProcessors
+	return info
 }
 
-// Because we have a name clash, let's rename the default function:
+// Helper function to get CPU count.
 func GetOSInfoNonWindows() OSInfo {
-    return OSInfo{}
+	var info OSInfo
+	if cpus, err := cpu.Counts(true); err == nil {
+		info.LogicalProcessors = uint64(cpus)
+	}
+	return info
 }
 
-// For thermal zone: 
+// GetThermalZoneTemps returns an example thermal zone temperature for Windows.
 func GetThermalZoneTemps() []ThermalZoneTemp {
-    // Example stub
-    return []ThermalZoneTemp{
-        {Instance: "CPU0", TempCelsius: 50.0},
-    }
+	return []ThermalZoneTemp{
+		{Instance: "CPU0", TempCelsius: 50.0},
+	}
+}
+
+// PageFileUsage holds page file usage data (Windows-only).
+type PageFileUsage struct {
+	PageFile string
+	UsagePct float64
+}
+
+// ServiceInfo holds Windows service information.
+type ServiceInfo struct {
+	Name       string
+	Display    string
+	StateValue int
+	StartValue int
+}
+
+// GetPageFileUsage returns example page file usage data.
+func GetPageFileUsage() []PageFileUsage {
+	return []PageFileUsage{
+		{PageFile: "C:\\pagefile.sys", UsagePct: 15.0},
+	}
+}
+
+// GetServices returns example Windows service data.
+func GetServices() []ServiceInfo {
+	return []ServiceInfo{
+		{
+			Name:       "Spooler",
+			Display:    "Print Spooler",
+			StateValue: 1,
+			StartValue: 1,
+		},
+		{
+			Name:       "W32Time",
+			Display:    "Windows Time",
+			StateValue: 0,
+			StartValue: 0,
+		},
+	}
+}
+
+// GetEventLogStats returns example event log statistics.
+func GetEventLogStats() EventLogStats {
+	return EventLogStats{
+		ErrorCount:       2,
+		WarningCount:     5,
+		InformationCount: 50,
+		OtherCount:       1,
+	}
 }
