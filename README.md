@@ -132,39 +132,3 @@ This generates a full installer that:
 | Windows 10/11  | ✅ Full       |       |
 | Linux          | ✅ Partial    | No services/logs |
 | macOS          | ✅ Partial    | No services/logs |
-
----
-
-## 📝 Release Notes — v0.0.1
-
-> 🏁 **Initial Stable Release**
-
-✅ First production-ready release with full metrics and service support.
-
-### Included:
-- 🧠 Per-process + system-wide metrics
-- 🪟 Windows: Page File, Services, Events
-- ⚙️ CLI + JSON config support
-- 🔧 Buildable and runnable as service
-- 📦 Installer via Inno Setup
-
----
-
-## 🔁 Version
-
-```
-v0.0.1
-```
-
----
-
-## 📃 License
-
-MIT License © 2025
-
----
-
-## 👨‍💻 Maintainer
-
-Built with ❤️ by Abhishek Thakur
-```
