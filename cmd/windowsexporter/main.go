@@ -31,12 +31,14 @@ func loadConfig(filename string) error {
 // program implements service.Interface.
 type program struct{}
 
+// Start is called when the service starts.
 func (p *program) Start(s service.Service) error {
 	// Run the service asynchronously.
 	go p.run()
 	return nil
 }
 
+// run starts the main HTTP server for metrics.
 func (p *program) run() {
 	addr := ":" + config.Port
 	http.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
@@ -50,9 +52,10 @@ func (p *program) run() {
 	}
 }
 
+// Stop is called when the service stops.
 func (p *program) Stop(s service.Service) error {
 	log.Println("Service stopping")
-	// Signal termination if needed.
+	// If needed, signal termination or do cleanup here.
 	os.Exit(0)
 	return nil
 }
@@ -68,6 +71,10 @@ func main() {
 	// Command-line flags.
 	configFile := flag.String("config", "config.json", "Path to configuration file")
 	svcFlag := flag.String("service", "", "Control the system service. Valid actions: install, uninstall, start, stop, run")
+
+	// NEW: Add a port override flag so user can skip editing config.json
+	portFlag := flag.String("port", "", "Override port from config.json (e.g. 9183)")
+
 	flag.Parse()
 
 	// Load configuration from file.
@@ -75,6 +82,11 @@ func main() {
 	if err != nil {
 		log.Printf("Failed to load config file %s: %v. Using default port 9182.", *configFile, err)
 		config.Port = "9182"
+	}
+
+	// If user provides -port, override config.Port
+	if *portFlag != "" {
+		config.Port = *portFlag
 	}
 
 	prg := &program{}
@@ -94,7 +106,7 @@ func main() {
 		return
 	}
 
-	// Run the service.
+	// Run the service (foreground if -service=run, or as a Windows service otherwise).
 	err = s.Run()
 	if err != nil {
 		log.Fatal(err)

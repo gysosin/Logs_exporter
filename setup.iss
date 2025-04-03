@@ -1,70 +1,46 @@
+;---------------------------------------------------------------------
+; Fully Corrected setup.iss (No warnings)
+;---------------------------------------------------------------------
+
 [Setup]
 AppName=Logs Exporter
 AppVersion=1.0
-DefaultDirName={pf}\LogsExporter
+DefaultDirName={commonpf}\LogsExporter
 DefaultGroupName=Logs Exporter
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 OutputBaseFilename=LogsExporterSetup
 Compression=lzma
 SolidCompression=yes
 
-[Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl"
-
 [Files]
-Source: "bin\windows_amd64\windows_exporter.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "config.json";                          DestDir: "{app}"; Flags: ignoreversion
+; Adjust these paths to match your actual build outputs.
+Source: "C:\projects\Logs_exporter\bin\windows_amd64\windows_exporter.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\projects\Logs_exporter\config.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Logs Exporter";            Filename: "{app}\windows_exporter.exe"
-Name: "{group}\Uninstall Logs Exporter";  Filename: "{uninstallexe}"
+; Icon for normal usage
+Name: "{group}\Logs Exporter"; Filename: "{app}\windows_exporter.exe"; \
+    IconIndex: 0; Tasks: installnormal
+
+[Tasks]
+Name: "installservice"; Description: "Install Logs Exporter as a Windows Service"; GroupDescription: "Installation Mode:"
+Name: "installnormal";  Description: "Install as a standard application (run manually)"; GroupDescription: "Installation Mode:"
 
 [Run]
-Filename: "{app}\windows_exporter.exe"; Description: "Run Logs Exporter"; \
-  Flags: nowait postinstall skipifsilent
+; Install and start service if selected
+Filename: "{app}\windows_exporter.exe"; Parameters: "-service install"; \
+    Flags: nowait runhidden; Check: WizardIsTaskSelected('installservice')
+Filename: "{app}\windows_exporter.exe"; Parameters: "-service start"; \
+    Flags: nowait runhidden; Check: WizardIsTaskSelected('installservice')
 
-[Code]
-var
-  PortPage: TInputQueryWizardPage;
+; Launch after installation if selected
+Filename: "{app}\windows_exporter.exe"; Description: "Launch Logs Exporter now"; \
+    Flags: nowait postinstall skipifsilent; Check: WizardIsTaskSelected('installnormal')
 
-procedure InitializeWizard;
-begin
-  // Create a simple page asking the user for the port
-  PortPage := CreateInputQueryPage(
-    wpSelectDir,
-    'Configuration',
-    'Configuration Options',
-    'Please specify the port for Logs Exporter:'
-  );
-  // Add one edit field labeled “Port:”
-  PortPage.Add('Port:', False);             // Add field (not password)
-  PortPage.Values[0] := '9182';             // Set default port value
-end;
-
-// We only need CurStepChanged to rewrite config.json after install
-procedure CurStepChanged(CurStep: TSetupStep);
-var
-  PortValue: string;
-  ConfigFile: string;
-  ConfigFileContent: string;
-  SL: TStringList;
-begin
-  if CurStep = ssPostInstall then
-  begin
-    PortValue := PortPage.Values[0];
-    ConfigFileContent :=
-      '{'#13#10 +
-      '  "port": "' + PortValue + '"'#13#10 +
-      '}';
-
-    ConfigFile := ExpandConstant('{app}\config.json');
-
-    // Write out the JSON via a TStringList
-    SL := TStringList.Create;
-    try
-      SL.Text := ConfigFileContent;
-      SL.SaveToFile(ConfigFile);
-    finally
-      SL.Free;
-    end;
-  end;
-end;
+[UninstallRun]
+; Stop and uninstall the service if it was installed previously
+Filename: "{app}\windows_exporter.exe"; Parameters: "-service stop"; \
+    Flags: nowait runhidden; Check: WizardIsTaskSelected('installservice'); RunOnceId: "StopService"
+Filename: "{app}\windows_exporter.exe"; Parameters: "-service uninstall"; \
+    Flags: nowait runhidden; Check: WizardIsTaskSelected('installservice'); RunOnceId: "UninstallService"
