@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gysosin/Logs_exporter/internal/collectors"
@@ -14,18 +15,28 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-// Config holds runtime configuration read from JSON (optional).
+// Config holds runtime configuration read from JSON.
 type Config struct {
 	Port       string `json:"port"`
 	SystemName string `json:"system_name"`
 	NatsURL    string `json:"nats_url"`
+	Mode       string `json:"mode"` // "push" or "scrape"
 }
 
 // Global config
 var config Config
 
 // loadConfig reads a JSON configuration file into the config struct.
+// If filename is a relative path, it will be resolved relative to the executable's directory.
 func loadConfig(filename string) error {
+	if !filepath.IsAbs(filename) {
+		exePath, err := os.Executable()
+		if err == nil {
+			filename = filepath.Join(filepath.Dir(exePath), filename)
+		} else {
+			log.Printf("Error determining executable path: %v", err)
+		}
+	}
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
@@ -33,15 +44,44 @@ func loadConfig(filename string) error {
 	return json.Unmarshal(data, &config)
 }
 
+// initLogging sets up log output to a file.
+func initLogging() {
+	// Determine the absolute path for the log file relative to the executable.
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Printf("Cannot determine executable path: %v", err)
+		return
+	}
+	exeDir := filepath.Dir(exePath)
+	logFilePath := filepath.Join(exeDir, "logs_exporter_debug.log")
+
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Printf("Failed to open log file %s: %v", logFilePath, err)
+		return
+	}
+	// Redirect standard logger output to the file.
+	log.SetOutput(logFile)
+	log.Printf("Logging started. Log file: %s", logFilePath)
+}
+
 // program implements service.Interface for running as a Windows service.
 type program struct {
-	Port string
+	Port         string
+	Mode         string // "push" or "scrape"
+	NatsURL      string
+	PushInterval time.Duration
 }
 
 // Start is called when the service starts.
 func (p *program) Start(s service.Service) error {
-	// Run the service asynchronously.
-	go p.run()
+	log.Printf("Service starting with mode=%s", p.Mode)
+	// Choose mode: push mode will publish metrics to NATS; scrape mode serves an HTTP endpoint.
+	if p.Mode == "push" {
+		go pushMetrics(p.NatsURL, p.PushInterval)
+	} else {
+		go p.run()
+	}
 	return nil
 }
 
@@ -79,11 +119,10 @@ func pushMetrics(natsURL string, interval time.Duration) {
 		log.Fatalf("Failed to get JetStream context: %v", err)
 	}
 
-	// Use the fixed subject "metrics".
 	subject := "metrics"
 	log.Printf("Starting push to NATS JetStream at subject=%s every=%v", subject, interval)
 
-	// If no system name is specified in config, try to use the hostname.
+	// Use hostname as system name if not specified in config.
 	if config.SystemName == "" {
 		hn, err := os.Hostname()
 		if err != nil {
@@ -99,7 +138,6 @@ func pushMetrics(natsURL string, interval time.Duration) {
 	for {
 		<-ticker.C
 		metrics := collectors.GenerateMetrics()
-		// Wrap the metrics payload in a JSON object that includes the system name.
 		payload := map[string]string{
 			"system_name": config.SystemName,
 			"metrics":     metrics,
@@ -119,41 +157,59 @@ func pushMetrics(natsURL string, interval time.Duration) {
 }
 
 func main() {
-	// Service config for the Windows service.
+	// Initialize logging to file.
+	initLogging()
+
+	// Service configuration for the Windows service.
 	svcConfig := &service.Config{
 		Name:        "LogsExporterService",
 		DisplayName: "Logs Exporter Service",
 		Description: "Exports system metrics in Prometheus format (either push mode or scrape).",
 	}
 
-	// Flags.
+	// Command-line flags.
 	configFile := flag.String("config", "config.json", "Path to JSON config file")
 	svcFlag := flag.String("service", "", "Install/uninstall/start/stop/run the Windows service (example: --service=install)")
-	// Basic port override.
 	portFlag := flag.String("port", "", "Override port from config.json (e.g. 9182)")
-	// NATS push mode flag.
 	pushFlag := flag.Bool("push", false, "Enable push mode (publish to NATS JetStream)")
-	// nats_url flag (overriding config value if needed).
+	modeFlag := flag.String("mode", "", "Mode (push or scrape)")
 	natsURLFlag := flag.String("nats_url", "", "NATS server URL")
 	pushIntervalFlag := flag.String("push_interval", "1s", "How often to push metrics, e.g. 500ms, 2s")
-
 	flag.Parse()
 
-	// Load the config.
+	// Log the current working directory for troubleshooting.
+	wd, err := os.Getwd()
+	if err == nil {
+		log.Printf("Working Directory: %s", wd)
+	}
+
+	// Load configuration from file.
 	if err := loadConfig(*configFile); err != nil {
 		log.Printf("Could not read config file %s. Using defaults: %v", *configFile, err)
 		config.Port = "9182"
-		// Do not force a default system name here
 		config.SystemName = ""
 		config.NatsURL = "nats://127.0.0.1:4222"
+		config.Mode = "scrape"
 	}
 
-	// Override config values from flags if provided.
+	// Override config values from flags, if provided.
 	if *portFlag != "" {
 		config.Port = *portFlag
 	}
 	if *natsURLFlag != "" {
 		config.NatsURL = *natsURLFlag
+	}
+
+	// Determine the operating mode. Priority: mode flag > push flag > config file.
+	var mode string
+	if *modeFlag != "" {
+		mode = *modeFlag
+	} else if *pushFlag {
+		mode = "push"
+	} else if config.Mode != "" {
+		mode = config.Mode
+	} else {
+		mode = "scrape"
 	}
 
 	// Parse the push interval.
@@ -163,14 +219,18 @@ func main() {
 		interval = time.Second
 	}
 
-	// If push mode is enabled, run pushMetrics.
-	if *pushFlag {
-		pushMetrics(config.NatsURL, interval)
-		return
+	// Log effective configuration.
+	log.Printf("Effective Config: Port=%s, NatsURL=%s, Mode=%s, PushInterval=%v", config.Port, config.NatsURL, mode, interval)
+
+	// Create a program instance with the proper configuration.
+	prg := &program{
+		Port:         config.Port,
+		Mode:         mode,
+		NatsURL:      config.NatsURL,
+		PushInterval: interval,
 	}
 
-	// If not push mode, run the HTTP endpoint or service.
-	prg := &program{Port: config.Port}
+	// Create the service.
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
 		log.Fatalf("Cannot start service: %v", err)
@@ -186,7 +246,7 @@ func main() {
 		return
 	}
 
-	// Run the HTTP endpoint in the foreground.
+	// Run the service. The program's Start() function will branch based on mode.
 	if err := s.Run(); err != nil {
 		log.Fatal(err)
 	}
