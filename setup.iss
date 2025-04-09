@@ -115,7 +115,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   PushMode, ServiceMode: Boolean;
-  ParamStr, ExePath, InstallParams: String;
+  ExePath, InstallParams, ParamStr: String;
   ExitCode, ExecCode: Integer;
   NatsURL, SubjectPrefix, Port: String;
 begin
@@ -125,19 +125,20 @@ begin
     ServiceMode := CbWinService.Checked;
     ExePath := ExpandConstant('{app}\logs_exporter.exe');
 
-    // Retrieve values from the custom page
+    // Retrieve values from the custom page; these are only for standalone mode.
     NatsURL := QueryPage.Values[0];
     SubjectPrefix := QueryPage.Values[1];
     Port := QueryPage.Values[2];
 
+    // Build parameters for standalone run
+    ParamStr := Format('-port "%s"', [Port]);
     if PushMode then
-      ParamStr := Format('-push -nats_url "%s" -nats_subject "%s" -port "%s"', [NatsURL, SubjectPrefix, Port])
-    else
-      ParamStr := Format('-port "%s"', [Port]);
+      ParamStr := Format('-push -nats_url "%s" -nats_subject "%s" -port "%s"', [NatsURL, SubjectPrefix, Port]);
 
     if ServiceMode then
     begin
-      InstallParams := Format('--service install %s', [ParamStr]);
+      // For service installation, call with only the service flag.
+      InstallParams := '--service install';
       if Exec(ExePath, InstallParams, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
       begin
         if not Exec(ExePath, '--service start', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
@@ -164,7 +165,7 @@ begin
     ExePath := ExpandConstant('{app}\logs_exporter.exe');
     
     // Stop service if it exists
-    if ServiceExists('LogsExporter') then
+    if ServiceExists('LogsExporterService') then
     begin
       if not Exec(ExePath, '--service stop', '', SW_HIDE, ewWaitUntilTerminated, StopCode) then
         MsgBox('Failed to stop service.', mbError, MB_OK);
