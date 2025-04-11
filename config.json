@@ -2,5 +2,6 @@
   "port": "9182",
   "system_name": "agent-A",
   "nats_url": "nats://127.0.0.1:4222",
-  "mode": "push"
+  "mode": "push",
+  "netflow_interfaces": []
 }

@@ -4,13 +4,12 @@ import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"time"
-
-	"log"
 
 	"github.com/gysosin/Logs_exporter/internal/collectors"
 	"github.com/kardianos/service"
@@ -20,10 +19,11 @@ import (
 
 // Config holds runtime configuration read from JSON.
 type Config struct {
-	Port       string `json:"port"`
-	SystemName string `json:"system_name"`
-	NatsURL    string `json:"nats_url"`
-	Mode       string `json:"mode"` // "push" or "scrape"
+	Port       string   `json:"port"`
+	SystemName string   `json:"system_name"`
+	NatsURL    string   `json:"nats_url"`
+	Mode       string   `json:"mode"`               // "push" or "scrape"
+	NetIfaces  []string `json:"netflow_interfaces"` // optional
 }
 
 var config Config
@@ -73,10 +73,10 @@ type program struct {
 
 func (p *program) Start(s service.Service) error {
 	logWarning("Service starting with mode=%s", p.Mode)
+	go collectors.CaptureNetFlowFromAll(config.NetIfaces)
+	go p.run() // <-- always start the HTTP server
 	if p.Mode == "push" {
 		go pushMetrics(p.NatsURL, p.PushInterval)
-	} else {
-		go p.run()
 	}
 	return nil
 }
@@ -84,11 +84,19 @@ func (p *program) Start(s service.Service) error {
 func (p *program) run() {
 	addr := ":" + p.Port
 	logWarning("Starting HTTP server on %s...", addr)
+
 	http.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics := collectors.GenerateMetrics()
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = w.Write([]byte(metrics))
 	})
+
+	http.HandleFunc("/netflow", func(w http.ResponseWriter, r *http.Request) {
+		entries := collectors.GetNetFlowEntries()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(entries)
+	})
+
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		logError("HTTP server failed: %v", err)
 	}
@@ -96,7 +104,7 @@ func (p *program) run() {
 
 func (p *program) Stop(s service.Service) error {
 	logWarning("Service stopping")
-	os.Exit(0)
+	// Perform any necessary cleanup here
 	return nil
 }
 
@@ -150,20 +158,20 @@ func main() {
 	svcConfig := &service.Config{
 		Name:        "LogsExporterService",
 		DisplayName: "Logs Exporter Service",
-		Description: "Exports system metrics in Prometheus format (either push mode or scrape).",
+		Description: "Exports system metrics and NetFlow data (push/scrape mode)",
 	}
 
 	configFile := flag.String("config", "config.json", "Path to JSON config file")
-	svcFlag := flag.String("service", "", "Install/uninstall/start/stop/run the Windows service (example: --service=install)")
-	portFlag := flag.String("port", "", "Override port from config.json (e.g. 9182)")
-	pushFlag := flag.Bool("push", false, "Enable push mode (publish to NATS JetStream)")
+	svcFlag := flag.String("service", "", "Install/uninstall/start/stop/run the Windows service")
+	portFlag := flag.String("port", "", "Override port from config.json")
+	pushFlag := flag.Bool("push", false, "Enable push mode")
 	modeFlag := flag.String("mode", "", "Mode (push or scrape)")
 	natsURLFlag := flag.String("nats_url", "", "NATS server URL")
-	pushIntervalFlag := flag.String("push_interval", "1s", "How often to push metrics, e.g. 500ms, 2s")
+	pushIntervalFlag := flag.String("push_interval", "1s", "Interval for push mode")
+
 	flag.Parse()
 
-	wd, err := os.Getwd()
-	if err == nil {
+	if wd, err := os.Getwd(); err == nil {
 		logWarning("Working Directory: %s", wd)
 	}
 
@@ -213,7 +221,6 @@ func main() {
 		logError("Cannot start service: %v", err)
 	}
 
-	// only handle service flag on Windows
 	if runtime.GOOS == "windows" && *svcFlag != "" {
 		if err := service.Control(s, *svcFlag); err != nil {
 			logError("Valid service actions: install, uninstall, start, stop, run")
