@@ -1,12 +1,12 @@
 package collectors
 
 import (
+	"runtime"
 	"strings"
 
 	"github.com/shirou/gopsutil/v3/disk"
 )
 
-// VolumeMetrics holds volume information similar to Get-Volume in PowerShell.
 type VolumeMetrics struct {
 	DriveLetter     string
 	FileSystemLabel string
@@ -14,11 +14,9 @@ type VolumeMetrics struct {
 	FreeBytes       uint64
 }
 
-// GetVolumeMetrics returns volume metrics for each partition.
 func GetVolumeMetrics() []VolumeMetrics {
 	var results []VolumeMetrics
 
-	// Use disk.Partitions to list mount points.
 	partitions, err := disk.Partitions(false)
 	if err != nil {
 		return results
@@ -30,15 +28,16 @@ func GetVolumeMetrics() []VolumeMetrics {
 			continue
 		}
 
-		// Attempt to extract drive letter from the device string.
 		driveLetter := part.Device
-		if idx := strings.Index(driveLetter, ":"); idx != -1 {
-			driveLetter = driveLetter[:idx+1]
+		if runtime.GOOS == "windows" {
+			if idx := strings.Index(driveLetter, ":"); idx != -1 {
+				driveLetter = driveLetter[:idx+1]
+			}
 		}
 
 		results = append(results, VolumeMetrics{
 			DriveLetter:     driveLetter,
-			FileSystemLabel: part.Fstype, // Using Fstype as a substitute for a label.
+			FileSystemLabel: part.Fstype,
 			SizeBytes:       usage.Total,
 			FreeBytes:       usage.Free,
 		})

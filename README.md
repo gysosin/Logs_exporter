@@ -50,6 +50,17 @@ logs_exporter.exe --port 9183
 git clone https://github.com/yourname/Logs_exporter.git
 cd Logs_exporter
 go build -o logs_exporter ./cmd/windowsexporter
+
+
+# Windows
+GOOS=windows GOARCH=amd64 go build -o logs_exporter.exe ./cmd/windowsexporter
+
+# Linux
+GOOS=linux GOARCH=amd64 go build -o logs_exporter ./cmd/windowsexporter
+
+# macOS
+GOOS=darwin GOARCH=amd64 go build -o logs_exporter ./cmd/windowsexporter
+
 ```
 
 ---
@@ -94,6 +105,7 @@ http://localhost:9182/metrics
 ```
 
 Includes:
+
 - `windows_cpu_usage_percent`
 - `windows_process_cpu_percent`
 - `windows_memory_bytes`
@@ -119,16 +131,17 @@ ISCC setup.iss
 ```
 
 This generates a full installer that:
+
 - Installs the binary
 - Registers and starts the Windows service
 - Sets up config file
 
 ---
 
-## 🧪 Tested Platforms
+## 🧪 Supported Platforms
 
-| Platform       | Supported ✅ | Notes |
-|----------------|--------------|-------|
-| Windows 10/11  | ✅ Full       |       |
-| Linux          | ✅ Partial    | No services/logs |
-| macOS          | ✅ Partial    | No services/logs |
+| Platform      | Status  | Notes                     |
+| ------------- | ------- | ------------------------- |
+| Windows 10/11 | ✅ Full | Service & installer ready |
+| Linux (any)   | ✅ Full | Systemd or binary mode    |
+| macOS         | ✅ Full | Use launchd or manual run |

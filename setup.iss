@@ -1,46 +1,176 @@
-;---------------------------------------------------------------------
-; Fully Corrected setup.iss (No warnings)
-;---------------------------------------------------------------------
+; --------------------------------------------------------------------------------
+; Inno Setup Script for Logs Exporter
+; --------------------------------------------------------------------------------
 
 [Setup]
-AppName=Logs Exporter
+AppName=LogsExporter
 AppVersion=1.0
-DefaultDirName={commonpf}\LogsExporter
-DefaultGroupName=Logs Exporter
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+DefaultDirName={pf}\LogsExporter
+DefaultGroupName=LogsExporter
 OutputBaseFilename=LogsExporterSetup
+WizardStyle=modern
 Compression=lzma
 SolidCompression=yes
+DisableDirPage=yes
+DisableProgramGroupPage=yes
+PrivilegesRequired=admin
+VersionInfoVersion=1.0.0
+VersionInfoCompany=YourCompany
+VersionInfoDescription=Logs Exporter Installation
+; LicenseFile=license.txt  ; Optional
 
 [Files]
-; Adjust these paths to match your actual build outputs.
-Source: "C:\projects\Logs_exporter\bin\windows_amd64\windows_exporter.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\projects\Logs_exporter\bin\windows_amd64\windows_exporter.exe"; DestDir: "{app}"; DestName: "logs_exporter.exe"; Flags: ignoreversion
 Source: "C:\projects\Logs_exporter\config.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-; Icon for normal usage
-Name: "{group}\Logs Exporter"; Filename: "{app}\windows_exporter.exe"; \
-    IconIndex: 0; Tasks: installnormal
+Name: "{group}\Logs Exporter"; Filename: "{app}\logs_exporter.exe"
+Name: "{group}\Uninstall Logs Exporter"; Filename: "{uninstallexe}"
 
-[Tasks]
-Name: "installservice"; Description: "Install Logs Exporter as a Windows Service"; GroupDescription: "Installation Mode:"
-Name: "installnormal";  Description: "Install as a standard application (run manually)"; GroupDescription: "Installation Mode:"
+[Code]
+// Function to check if a Windows service exists
+function ServiceExists(ServiceName: string): Boolean;
+var
+  ExitCode: Integer;
+begin
+  Result := False;
+  if Exec('sc', 'query "' + ServiceName + '"', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+    Result := (ExitCode = 0);
+end;
 
-[Run]
-; Install and start service if selected
-Filename: "{app}\windows_exporter.exe"; Parameters: "-service install"; \
-    Flags: nowait runhidden; Check: WizardIsTaskSelected('installservice')
-Filename: "{app}\windows_exporter.exe"; Parameters: "-service start"; \
-    Flags: nowait runhidden; Check: WizardIsTaskSelected('installservice')
+var
+  QueryPage: TInputQueryWizardPage;
+  CbPushMode, CbWinService: TCheckBox;
 
-; Launch after installation if selected
-Filename: "{app}\windows_exporter.exe"; Description: "Launch Logs Exporter now"; \
-    Flags: nowait postinstall skipifsilent; Check: WizardIsTaskSelected('installnormal')
+procedure InitializeWizard();
+var
+  YPos: Integer;
+begin
+  QueryPage := CreateInputQueryPage(
+    wpWelcome,
+    'Logs Exporter Setup',
+    'Configure Logs Exporter',
+    'Set the following configuration for Logs Exporter.'
+  );
 
-[UninstallRun]
-; Stop and uninstall the service if it was installed previously
-Filename: "{app}\windows_exporter.exe"; Parameters: "-service stop"; \
-    Flags: nowait runhidden; Check: WizardIsTaskSelected('installservice'); RunOnceId: "StopService"
-Filename: "{app}\windows_exporter.exe"; Parameters: "-service uninstall"; \
-    Flags: nowait runhidden; Check: WizardIsTaskSelected('installservice'); RunOnceId: "UninstallService"
+  // Add input fields and set default values
+  QueryPage.Add('NATS URL (for push mode):', False);
+  QueryPage.Values[0] := 'nats://127.0.0.1:4222';
+
+  QueryPage.Add('Subject prefix (default is "metrics"):', False);
+  QueryPage.Values[1] := 'metrics';
+
+  QueryPage.Add('Port (for HTTP server):', False);
+  QueryPage.Values[2] := '9182';
+
+  YPos := QueryPage.Edits[2].Top + QueryPage.Edits[2].Height + 15;
+
+  // Create checkboxes with proper positioning
+  CbPushMode := TCheckBox.Create(WizardForm);
+  CbPushMode.Parent := QueryPage.Surface;
+  CbPushMode.Top := YPos;
+  CbPushMode.Left := QueryPage.Edits[0].Left;
+  CbPushMode.Width := 300;
+  CbPushMode.Caption := 'Enable push mode (NATS JetStream)';
+
+  CbWinService := TCheckBox.Create(WizardForm);
+  CbWinService.Parent := QueryPage.Surface;
+  CbWinService.Top := YPos + 25;
+  CbWinService.Left := CbPushMode.Left;
+  CbWinService.Width := 300;
+  CbWinService.Caption := 'Install as Windows service';
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  if CurPageID = QueryPage.ID then
+  begin
+    // Validate required fields
+    if Trim(QueryPage.Values[2]) = '' then
+    begin
+      MsgBox('Please enter a port number.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+
+    if CbPushMode.Checked then
+    begin
+      if Trim(QueryPage.Values[0]) = '' then
+      begin
+        MsgBox('Please enter the NATS URL.', mbError, MB_OK);
+        Result := False;
+        Exit;
+      end;
+      if Trim(QueryPage.Values[1]) = '' then
+      begin
+        MsgBox('Please enter the Subject prefix.', mbError, MB_OK);
+        Result := False;
+        Exit;
+      end;
+    end;
+  end;
+  Result := True;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  PushMode, ServiceMode: Boolean;
+  ExePath, InstallParams, ParamStr: String;
+  ExitCode, ExecCode: Integer;
+  NatsURL, SubjectPrefix, Port: String;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    PushMode := CbPushMode.Checked;
+    ServiceMode := CbWinService.Checked;
+    ExePath := ExpandConstant('{app}\logs_exporter.exe');
+
+    // Retrieve values from the custom page; these are only for standalone mode.
+    NatsURL := QueryPage.Values[0];
+    SubjectPrefix := QueryPage.Values[1];
+    Port := QueryPage.Values[2];
+
+    // Build parameters for standalone run
+    ParamStr := Format('-port "%s"', [Port]);
+    if PushMode then
+      ParamStr := Format('-push -nats_url "%s" -nats_subject "%s" -port "%s"', [NatsURL, SubjectPrefix, Port]);
+
+    if ServiceMode then
+    begin
+      // For service installation, call with only the service flag.
+      InstallParams := '--service install';
+      if Exec(ExePath, InstallParams, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+      begin
+        if not Exec(ExePath, '--service start', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+          MsgBox('Failed to start service.', mbError, MB_OK);
+      end
+      else
+        MsgBox('Service installation failed.', mbError, MB_OK);
+    end
+    else
+    begin
+      if not ShellExec('open', ExePath, ParamStr, '', SW_SHOWNORMAL, ewNoWait, ExecCode) then
+        MsgBox('Failed to launch Logs Exporter.', mbError, MB_OK);
+    end;
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  StopCode, UninstallCode: Integer;
+  ExePath: String;
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    ExePath := ExpandConstant('{app}\logs_exporter.exe');
+    
+    // Stop service if it exists
+    if ServiceExists('LogsExporterService') then
+    begin
+      if not Exec(ExePath, '--service stop', '', SW_HIDE, ewWaitUntilTerminated, StopCode) then
+        MsgBox('Failed to stop service.', mbError, MB_OK);
+      if not Exec(ExePath, '--service uninstall', '', SW_HIDE, ewWaitUntilTerminated, UninstallCode) then
+        MsgBox('Failed to uninstall service.', mbError, MB_OK);
+    end;
+  end;
+end;
