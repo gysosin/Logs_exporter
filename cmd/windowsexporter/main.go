@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"log"
@@ -212,7 +213,8 @@ func main() {
 		logError("Cannot start service: %v", err)
 	}
 
-	if *svcFlag != "" {
+	// only handle service flag on Windows
+	if runtime.GOOS == "windows" && *svcFlag != "" {
 		if err := service.Control(s, *svcFlag); err != nil {
 			logError("Valid service actions: install, uninstall, start, stop, run")
 			logError("%v", err)
@@ -220,6 +222,8 @@ func main() {
 		}
 		logWarning("Service action '%s' executed successfully.", *svcFlag)
 		return
+	} else if runtime.GOOS != "windows" && *svcFlag != "" {
+		logWarning("--service is only supported on Windows. Ignoring.")
 	}
 
 	if err := s.Run(); err != nil {
