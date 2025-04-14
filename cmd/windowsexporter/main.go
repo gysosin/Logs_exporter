@@ -17,7 +17,6 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// Config holds runtime configuration read from JSON.
 type Config struct {
 	Port       string   `json:"port"`
 	SystemName string   `json:"system_name"`
@@ -74,7 +73,7 @@ type program struct {
 func (p *program) Start(s service.Service) error {
 	logWarning("Service starting with mode=%s", p.Mode)
 	go collectors.CaptureNetFlowFromAll(config.NetIfaces)
-	go p.run() // <-- always start the HTTP server
+	go p.run()
 	if p.Mode == "push" {
 		go pushMetrics(p.NatsURL, p.PushInterval)
 	}
@@ -104,7 +103,6 @@ func (p *program) run() {
 
 func (p *program) Stop(s service.Service) error {
 	logWarning("Service stopping")
-	// Perform any necessary cleanup here
 	return nil
 }
 
@@ -122,32 +120,47 @@ func pushMetrics(natsURL string, interval time.Duration) {
 		return
 	}
 
-	subject := "metrics"
-
 	hostname, err := os.Hostname()
 	if err != nil {
 		logError("Unable to get hostname: %v", err)
 		return
 	}
 
+	metricSubject := "metrics." + hostname
+	netflowSubject := "netflow." + hostname
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		<-ticker.C
+
+		// Push metrics
 		metrics := collectors.GenerateMetrics()
-		payload := map[string]string{
+		metricPayload := map[string]string{
 			"system_name": hostname,
 			"metrics":     metrics,
 		}
-		msgPayload, err := json.MarshalIndent(payload, "", "  ")
-		if err != nil {
+		msgPayload, err := json.MarshalIndent(metricPayload, "", "  ")
+		if err == nil {
+			_, err = js.Publish(metricSubject, msgPayload)
+			if err != nil {
+				logError("Failed to publish metrics: %v", err)
+			}
+		} else {
 			logError("Failed to marshal metrics payload: %v", err)
-			continue
 		}
-		_, err = js.Publish(subject, msgPayload)
-		if err != nil {
-			logError("Failed to publish metrics: %v", err)
+
+		// Push NetFlow data
+		netflows := collectors.GetNetFlowEntries()
+		netflowPayload, err := json.MarshalIndent(netflows, "", "  ")
+		if err == nil {
+			_, err = js.Publish(netflowSubject, netflowPayload)
+			if err != nil {
+				logError("Failed to publish netflow data: %v", err)
+			}
+		} else {
+			logError("Failed to marshal netflow payload: %v", err)
 		}
 	}
 }
