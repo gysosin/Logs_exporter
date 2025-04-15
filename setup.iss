@@ -17,7 +17,6 @@ PrivilegesRequired=admin
 VersionInfoVersion=1.0.0
 VersionInfoCompany=YourCompany
 VersionInfoDescription=Logs Exporter Installation
-; LicenseFile=license.txt  ; Optional
 
 [Files]
 Source: "C:\projects\Logs_exporter\bin\windows_amd64\windows_exporter.exe"; DestDir: "{app}"; DestName: "logs_exporter.exe"; Flags: ignoreversion
@@ -53,7 +52,6 @@ begin
     'Set the following configuration for Logs Exporter.'
   );
 
-  // Add input fields and set default values
   QueryPage.Add('NATS URL (for push mode):', False);
   QueryPage.Values[0] := 'nats://127.0.0.1:4222';
 
@@ -65,7 +63,6 @@ begin
 
   YPos := QueryPage.Edits[2].Top + QueryPage.Edits[2].Height + 15;
 
-  // Create checkboxes with proper positioning
   CbPushMode := TCheckBox.Create(WizardForm);
   CbPushMode.Parent := QueryPage.Surface;
   CbPushMode.Top := YPos;
@@ -85,7 +82,6 @@ function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   if CurPageID = QueryPage.ID then
   begin
-    // Validate required fields
     if Trim(QueryPage.Values[2]) = '' then
     begin
       MsgBox('Please enter a port number.', mbError, MB_OK);
@@ -117,7 +113,7 @@ var
   PushMode, ServiceMode: Boolean;
   ExePath, InstallParams, ParamStr: String;
   ExitCode, ExecCode: Integer;
-  NatsURL, SubjectPrefix, Port: String;
+  NatsURL, SubjectPrefix, Port, ModeStr, ConfigPath, ConfigContent, HostName: String;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -125,19 +121,35 @@ begin
     ServiceMode := CbWinService.Checked;
     ExePath := ExpandConstant('{app}\logs_exporter.exe');
 
-    // Retrieve values from the custom page; these are only for standalone mode.
+    // Retrieve values from the custom page
     NatsURL := QueryPage.Values[0];
     SubjectPrefix := QueryPage.Values[1];
     Port := QueryPage.Values[2];
+    ModeStr := 'scrape';
+    if PushMode then ModeStr := 'push';
 
-    // Build parameters for standalone run
+    // Build CLI params if running standalone
     ParamStr := Format('-port "%s"', [Port]);
     if PushMode then
       ParamStr := Format('-push -nats_url "%s" -nats_subject "%s" -port "%s"', [NatsURL, SubjectPrefix, Port]);
 
+    // Write config.json
+    HostName := GetComputerNameString();
+    ConfigPath := ExpandConstant('{app}\config.json');
+    ConfigContent :=
+      '{' + #13#10 +
+      '  "port": "' + Port + '",' + #13#10 +
+      '  "system_name": "' + HostName + '",' + #13#10 +
+      '  "nats_url": "' + NatsURL + '",' + #13#10 +
+      '  "mode": "' + ModeStr + '",' + #13#10 +
+      '  "netflow_interfaces": []' + #13#10 +
+      '}';
+
+    SaveStringToFile(ConfigPath, ConfigContent, False);
+
+    // Install as service or run standalone
     if ServiceMode then
     begin
-      // For service installation, call with only the service flag.
       InstallParams := '--service install';
       if Exec(ExePath, InstallParams, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
       begin
@@ -158,19 +170,29 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   StopCode, UninstallCode: Integer;
-  ExePath: String;
+  ExePath, LogPath: String;
 begin
   if CurUninstallStep = usUninstall then
   begin
     ExePath := ExpandConstant('{app}\logs_exporter.exe');
     
-    // Stop service if it exists
     if ServiceExists('LogsExporterService') then
     begin
       if not Exec(ExePath, '--service stop', '', SW_HIDE, ewWaitUntilTerminated, StopCode) then
         MsgBox('Failed to stop service.', mbError, MB_OK);
       if not Exec(ExePath, '--service uninstall', '', SW_HIDE, ewWaitUntilTerminated, UninstallCode) then
         MsgBox('Failed to uninstall service.', mbError, MB_OK);
+    end;
+
+    // Prompt user to delete logs
+    if MsgBox('Do you want to delete the generated log files?', mbConfirmation, MB_YESNO) = IDYES then
+    begin
+      LogPath := ExpandConstant('{app}\logs_exporter_debug.log');
+      if FileExists(LogPath) then
+        DeleteFile(LogPath);
+
+      // You can add other log files below if needed
+      // DeleteFile(ExpandConstant('{app}\netflow.log'));
     end;
   end;
 end;
