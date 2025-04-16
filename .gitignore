@@ -24,3 +24,6 @@ go.work.sum
 # env file
 .env
 bin/
+bin/windows_386/config.json
+bin/windows_amd64/config.json
+logs_exporter_debug.log
