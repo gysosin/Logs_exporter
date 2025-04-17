@@ -1682,3 +1682,37 @@
 2025/04/11 14:32:21 netflow.go:124: Packet captured on \Device\NPF_Loopback (src=127.0.0.1, dst=127.0.0.1)
 2025/04/11 14:32:21 netflow.go:124: Packet captured on \Device\NPF_Loopback (src=127.0.0.1, dst=127.0.0.1)
 2025/04/11 14:32:22 main.go:44: [WARNING] Service stopping
+2025/04/17 11:25:36 main.go:39: Logging initialized: WARNING and ERROR only
+2025/04/17 11:25:36 main.go:43: [WARNING] Working Directory: C:\projects\Logs_exporter
+2025/04/17 11:25:36 main.go:43: [WARNING] Could not read config file config.json. Using defaults: open C:\Users\xyfo\AppData\Local\Temp\go-build1960641560\b001\exe\config.json: The system cannot find the file specified.
+2025/04/17 11:25:36 main.go:43: [WARNING] Effective Config: Port=9182, NatsURL=nats://127.0.0.1:4222, Mode=scrape, PushInterval=1s
+2025/04/17 11:25:36 main.go:43: [WARNING] Service starting with mode=scrape
+2025/04/17 11:25:36 main.go:43: [WARNING] Starting HTTP server on :9182...
+2025/04/17 11:26:58 main.go:43: [WARNING] Service stopping
+2025/04/17 11:28:54 main.go:39: Logging initialized: WARNING and ERROR only
+2025/04/17 11:28:54 main.go:43: [WARNING] Working Directory: C:\projects\Logs_exporter
+2025/04/17 11:28:54 main.go:43: [WARNING] Could not read config file config.json. Using defaults: open C:\Users\xyfo\AppData\Local\go-build\9f\9fcc30f7cec4a362d0ea4d86419a7f44eaff69d060df26699a44009294d799e7-d\config.json: The system cannot find the file specified.
+2025/04/17 11:28:54 main.go:43: [WARNING] Effective Config: Port=9182, NatsURL=nats://127.0.0.1:4222, Mode=scrape, PushInterval=1s
+2025/04/17 11:28:54 main.go:43: [WARNING] Service starting with mode=scrape
+2025/04/17 11:28:54 main.go:43: [WARNING] Starting HTTP server on :9182...
+2025/04/17 11:29:37 main.go:43: [WARNING] Service stopping
+2025/04/17 11:33:25 main.go:39: Logging initialized: WARNING and ERROR only
+2025/04/17 11:33:25 main.go:43: [WARNING] Working Directory: C:\projects\Logs_exporter
+2025/04/17 11:33:25 main.go:43: [WARNING] Could not read config file config.json. Using defaults: open C:\Users\xyfo\AppData\Local\Temp\go-build1942003935\b001\exe\config.json: The system cannot find the file specified.
+2025/04/17 11:33:25 main.go:43: [WARNING] Effective Config: Port=9182, NatsURL=nats://127.0.0.1:4222, Mode=scrape, PushInterval=1s
+2025/04/17 11:33:25 main.go:43: [WARNING] Service starting with mode=scrape
+2025/04/17 11:33:25 main.go:43: [WARNING] Starting HTTP server on :9182...
+2025/04/17 11:35:43 main.go:43: [WARNING] Service stopping
+2025/04/17 11:36:05 main.go:39: Logging initialized: WARNING and ERROR only
+2025/04/17 11:36:05 main.go:43: [WARNING] Working Directory: C:\projects\Logs_exporter
+2025/04/17 11:36:05 main.go:43: [WARNING] Could not read config file config.json. Using defaults: open C:\Users\xyfo\AppData\Local\Temp\go-build1088511744\b001\exe\config.json: The system cannot find the file specified.
+2025/04/17 11:36:05 main.go:43: [WARNING] Effective Config: Port=9182, NatsURL=nats://127.0.0.1:4222, Mode=scrape, PushInterval=1s
+2025/04/17 11:36:05 main.go:43: [WARNING] Service starting with mode=scrape
+2025/04/17 11:36:05 main.go:43: [WARNING] Starting HTTP server on :9182...
+2025/04/17 11:42:13 main.go:43: [WARNING] Service stopping
+2025/04/17 11:42:16 main.go:39: Logging initialized: WARNING and ERROR only
+2025/04/17 11:42:16 main.go:43: [WARNING] Working Directory: C:\projects\Logs_exporter
+2025/04/17 11:42:16 main.go:43: [WARNING] Could not read config file config.json. Using defaults: open C:\Users\xyfo\AppData\Local\Temp\go-build2269361332\b001\exe\config.json: The system cannot find the file specified.
+2025/04/17 11:42:16 main.go:43: [WARNING] Effective Config: Port=9182, NatsURL=nats://127.0.0.1:4222, Mode=scrape, PushInterval=1s
+2025/04/17 11:42:16 main.go:43: [WARNING] Service starting with mode=scrape
+2025/04/17 11:42:16 main.go:43: [WARNING] Starting HTTP server on :9182...

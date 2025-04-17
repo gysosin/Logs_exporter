@@ -9,6 +9,20 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 )
 
+// PageFileUsage holds page file usage data (stub for non-Windows).
+type PageFileUsage struct {
+	PageFile string
+	UsagePct float64
+}
+
+// ServiceInfo holds Windows service information (stub for non-Windows).
+type ServiceInfo struct {
+	Name       string
+	Display    string
+	StateValue int
+	StartValue int
+}
+
 // GetUptime returns system uptime in seconds.
 func GetUptime() uint64 {
 	up, err := host.Uptime()
@@ -51,15 +65,17 @@ func GetThermalZoneTemps() []ThermalZoneTemp {
 	return []ThermalZoneTemp{}
 }
 
-// For non‑Windows, these stubs return nil.
+// GetPageFileUsage returns an empty slice for non-Windows.
 func GetPageFileUsage() []PageFileUsage {
 	return nil
 }
 
+// GetServices returns an empty slice for non-Windows.
 func GetServices() []ServiceInfo {
 	return nil
 }
 
+// GetEventLogStats returns empty event log stats for non-Windows.
 func GetEventLogStats() EventLogStats {
 	return EventLogStats{}
 }
