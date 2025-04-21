@@ -71,8 +71,8 @@ func loadConfig(filename string) error {
 
 const (
 	spoolBase    = "spool"
-	maxSpoolSize = 10 * 1024 * 1024 * 1024 // 10 GiB
-	maxSpoolAge  = 24 * time.Hour          // 24h retention
+	maxSpoolSize = 10 * 1024 * 1024 * 1024 // 10 GiB
+	maxSpoolAge  = 24 * time.Hour          // 24 h retention
 )
 
 // ensureDir makes sure path exists.
@@ -334,6 +334,7 @@ func main() {
 		Description: "Exports system metrics and NetFlow data (push/scrape mode)",
 	}
 
+	// CLI flags
 	configFile := flag.String("config", "config.json", "Path to JSON config file")
 	svcFlag := flag.String("service", "", "Install/uninstall/start/stop/run the Windows service")
 	portFlag := flag.String("port", "", "Override port from config.json")
@@ -341,8 +342,11 @@ func main() {
 	modeFlag := flag.String("mode", "", "Mode (push or scrape)")
 	natsURLFlag := flag.String("nats_url", "", "NATS server URL")
 	pushIntervalFlag := flag.String("push_interval", "5s", "Interval for push mode")
-
+	includeInternal := flag.Bool("include_internal", false, "Capture internal/host‑to‑host traffic as well")
 	flag.Parse()
+
+	// apply internal‑traffic flag
+	collectors.IncludeInternalFlows = *includeInternal
 
 	if wd, err := os.Getwd(); err == nil {
 		logWarning("Working Directory: %s", wd)
@@ -356,6 +360,7 @@ func main() {
 		config.Mode = "scrape"
 	}
 
+	// override port & NATS URL if provided
 	if *portFlag != "" {
 		config.Port = *portFlag
 	}
@@ -363,6 +368,7 @@ func main() {
 		config.NatsURL = *natsURLFlag
 	}
 
+	// determine mode
 	var mode string
 	switch {
 	case *modeFlag != "":
@@ -375,14 +381,15 @@ func main() {
 		mode = "scrape"
 	}
 
+	// parse interval
 	interval, err := time.ParseDuration(*pushIntervalFlag)
 	if err != nil {
 		logWarning("Invalid push_interval=%s. Defaulting to 5s", *pushIntervalFlag)
 		interval = 5 * time.Second
 	}
 
-	logWarning("Effective Config: Port=%s, NatsURL=%s, Mode=%s, PushInterval=%v",
-		config.Port, config.NatsURL, mode, interval)
+	logWarning("Effective Config: Port=%s, NatsURL=%s, Mode=%s, PushInterval=%v, IncludeInternal=%v",
+		config.Port, config.NatsURL, mode, interval, collectors.IncludeInternalFlows)
 
 	prg := &program{
 		Port:         config.Port,

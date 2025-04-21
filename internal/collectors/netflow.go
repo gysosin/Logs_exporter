@@ -16,9 +16,42 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
+var (
+	// when false, skip host<->host (private) flows
+	IncludeInternalFlows = false
+
+	privateCIDRs []*net.IPNet
+)
+
+func init() {
+	for _, cidr := range []string{
+		"127.0.0.0/8",
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+	} {
+		_, network, _ := net.ParseCIDR(cidr)
+		privateCIDRs = append(privateCIDRs, network)
+	}
+}
+
+func isPrivateIP(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, net := range privateCIDRs {
+		if net.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// NetFlowEntry holds a single aggregated flow
 type NetFlowEntry struct {
 	Interface  string    `json:"interface"`
-	Direction  string    `json:"direction"` // inbound or outbound
+	Direction  string    `json:"direction"`
 	SrcIP      string    `json:"src_ip"`
 	DstIP      string    `json:"dst_ip"`
 	SrcPort    uint16    `json:"src_port"`
@@ -28,7 +61,7 @@ type NetFlowEntry struct {
 	Bytes      int       `json:"bytes"`
 	StartTime  time.Time `json:"start_time"`
 	EndTime    time.Time `json:"end_time"`
-	SystemName string    `json:"system_name"` // ← new field
+	SystemName string    `json:"system_name"`
 }
 
 var (
@@ -51,7 +84,7 @@ func getLocalIPs() map[string]bool {
 	return ips
 }
 
-func makeFlowKey(iface string, src, dst string, sport, dport uint16, proto string, dir string) string {
+func makeFlowKey(iface, src, dst string, sport, dport uint16, proto, dir string) string {
 	return strings.Join([]string{iface, src, dst, proto, dir, string(sport), string(dport)}, "|")
 }
 
@@ -62,11 +95,7 @@ func updateFlow(entry *NetFlowEntry, length int) {
 }
 
 func CaptureNetFlowFromAll(override []string) {
-	ifaces := []pcap.Interface{}
-	log.Printf("Monitoring interfaces:")
-	for _, iface := range ifaces {
-		log.Println("- " + iface.Name)
-	}
+	var ifaces []pcap.Interface
 	if len(override) == 0 {
 		all, err := pcap.FindAllDevs()
 		if err != nil {
@@ -75,20 +104,15 @@ func CaptureNetFlowFromAll(override []string) {
 		}
 		ifaces = all
 	} else {
+		devs, _ := pcap.FindAllDevs()
 		for _, name := range override {
-			devs, err := pcap.FindAllDevs()
-			if err != nil {
-				continue
-			}
 			for _, dev := range devs {
 				if dev.Name == name {
 					ifaces = append(ifaces, dev)
-					break
 				}
 			}
 		}
 	}
-
 	for _, iface := range ifaces {
 		go captureFromInterface(iface.Name)
 	}
@@ -109,11 +133,8 @@ func captureFromInterface(name string) {
 			continue
 		}
 
-		var (
-			srcIP, dstIP string
-			proto        string
-			sport, dport uint16
-		)
+		var srcIP, dstIP, proto string
+		var sport, dport uint16
 
 		switch ipLayer := networkLayer.(type) {
 		case *layers.IPv4:
@@ -124,11 +145,23 @@ func captureFromInterface(name string) {
 			continue
 		}
 
+		// direction
 		dir := "inbound"
 		if localIPs[srcIP] {
 			dir = "outbound"
 		}
 
+		// FILTER: drop purely host<->host private traffic
+		if !IncludeInternalFlows {
+			if localIPs[srcIP] && isPrivateIP(dstIP) {
+				continue
+			}
+			if localIPs[dstIP] && isPrivateIP(srcIP) {
+				continue
+			}
+		}
+
+		// transport ports
 		if t := packet.TransportLayer(); t != nil {
 			switch layer := t.(type) {
 			case *layers.TCP:
@@ -157,7 +190,7 @@ func captureFromInterface(name string) {
 				Bytes:      len(packet.Data()),
 				StartTime:  now,
 				EndTime:    now,
-				SystemName: "", // will be set by pushMetrics
+				SystemName: "",
 			}
 		}
 		netflowMu.Unlock()
@@ -167,7 +200,6 @@ func captureFromInterface(name string) {
 func GetNetFlowEntries() []NetFlowEntry {
 	netflowMu.Lock()
 	defer netflowMu.Unlock()
-
 	result := make([]NetFlowEntry, 0, len(netflowBuffer))
 	for _, v := range netflowBuffer {
 		result = append(result, *v)
