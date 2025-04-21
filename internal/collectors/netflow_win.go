@@ -1,3 +1,4 @@
+// internal/collectors/netflow_win.go
 //go:build windows
 // +build windows
 
@@ -16,17 +17,18 @@ import (
 )
 
 type NetFlowEntry struct {
-	Interface string    `json:"interface"`
-	Direction string    `json:"direction"` // inbound or outbound
-	SrcIP     string    `json:"src_ip"`
-	DstIP     string    `json:"dst_ip"`
-	SrcPort   uint16    `json:"src_port"`
-	DstPort   uint16    `json:"dst_port"`
-	Protocol  string    `json:"protocol"`
-	Packets   int       `json:"packets"`
-	Bytes     int       `json:"bytes"`
-	StartTime time.Time `json:"start_time"`
-	EndTime   time.Time `json:"end_time"`
+	Interface  string    `json:"interface"`
+	Direction  string    `json:"direction"` // inbound or outbound
+	SrcIP      string    `json:"src_ip"`
+	DstIP      string    `json:"dst_ip"`
+	SrcPort    uint16    `json:"src_port"`
+	DstPort    uint16    `json:"dst_port"`
+	Protocol   string    `json:"protocol"`
+	Packets    int       `json:"packets"`
+	Bytes      int       `json:"bytes"`
+	StartTime  time.Time `json:"start_time"`
+	EndTime    time.Time `json:"end_time"`
+	SystemName string    `json:"system_name"` // ← new field
 }
 
 var (
@@ -92,11 +94,9 @@ func captureWithWinDivert() {
 
 		flow := parseIPv4Packet(packet[:n])
 		if flow != nil {
-			// Optionally skip loopback traffic
+			// skip loopback
 			if strings.HasPrefix(flow.SrcIP, "127.") && strings.HasPrefix(flow.DstIP, "127.") {
-				if _, err := handle.Send(packet[:n], addr); err != nil {
-					log.Printf("WinDivert send error: %v", err)
-				}
+				handle.Send(packet[:n], addr)
 				continue
 			}
 
@@ -109,24 +109,23 @@ func captureWithWinDivert() {
 			now := time.Now()
 			flow.StartTime = now
 			flow.EndTime = now
+			flow.SystemName = "" // will be set by pushMetrics
 
 			key := makeFlowKey(flow.Interface, flow.SrcIP, flow.DstIP, flow.SrcPort, flow.DstPort, flow.Protocol, flow.Direction)
 
 			netflowMu.Lock()
 			if entry, ok := netflowBuffer[key]; ok {
-				updateFlow(entry, len(packet))
+				updateFlow(entry, int(n))
 			} else {
 				flow.Packets = 1
-				flow.Bytes = len(packet)
+				flow.Bytes = int(n)
 				netflowBuffer[key] = flow
 			}
 			netflowMu.Unlock()
 		}
 
-		// Reinjection keeps networking alive
-		if _, err := handle.Send(packet[:n], addr); err != nil {
-			log.Printf("WinDivert send error: %v", err)
-		}
+		// reinject
+		handle.Send(packet[:n], addr)
 	}
 }
 
@@ -149,16 +148,10 @@ func parseIPv4Packet(data []byte) *NetFlowEntry {
 
 	switch protocol {
 	case 6: // TCP
-		if len(data) < headerLen+4 {
-			return nil
-		}
 		sport = binary.BigEndian.Uint16(data[headerLen : headerLen+2])
 		dport = binary.BigEndian.Uint16(data[headerLen+2 : headerLen+4])
 		protoStr = "tcp"
 	case 17: // UDP
-		if len(data) < headerLen+4 {
-			return nil
-		}
 		sport = binary.BigEndian.Uint16(data[headerLen : headerLen+2])
 		dport = binary.BigEndian.Uint16(data[headerLen+2 : headerLen+4])
 		protoStr = "udp"

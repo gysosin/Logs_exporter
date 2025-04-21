@@ -1,3 +1,4 @@
+// internal/collectors/netflow.go
 //go:build !windows
 // +build !windows
 
@@ -16,17 +17,18 @@ import (
 )
 
 type NetFlowEntry struct {
-	Interface string    `json:"interface"`
-	Direction string    `json:"direction"` // inbound or outbound
-	SrcIP     string    `json:"src_ip"`
-	DstIP     string    `json:"dst_ip"`
-	SrcPort   uint16    `json:"src_port"`
-	DstPort   uint16    `json:"dst_port"`
-	Protocol  string    `json:"protocol"`
-	Packets   int       `json:"packets"`
-	Bytes     int       `json:"bytes"`
-	StartTime time.Time `json:"start_time"`
-	EndTime   time.Time `json:"end_time"`
+	Interface  string    `json:"interface"`
+	Direction  string    `json:"direction"` // inbound or outbound
+	SrcIP      string    `json:"src_ip"`
+	DstIP      string    `json:"dst_ip"`
+	SrcPort    uint16    `json:"src_port"`
+	DstPort    uint16    `json:"dst_port"`
+	Protocol   string    `json:"protocol"`
+	Packets    int       `json:"packets"`
+	Bytes      int       `json:"bytes"`
+	StartTime  time.Time `json:"start_time"`
+	EndTime    time.Time `json:"end_time"`
+	SystemName string    `json:"system_name"` // ← new field
 }
 
 var (
@@ -41,8 +43,7 @@ func getLocalIPs() map[string]bool {
 	for _, iface := range ifaces {
 		addrs, _ := iface.Addrs()
 		for _, addr := range addrs {
-			ipNet, ok := addr.(*net.IPNet)
-			if ok && ipNet.IP.To4() != nil {
+			if ipNet, ok := addr.(*net.IPNet); ok && ipNet.IP.To4() != nil {
 				ips[ipNet.IP.String()] = true
 			}
 		}
@@ -75,11 +76,11 @@ func CaptureNetFlowFromAll(override []string) {
 		ifaces = all
 	} else {
 		for _, name := range override {
-			iface, err := pcap.FindAllDevs()
+			devs, err := pcap.FindAllDevs()
 			if err != nil {
 				continue
 			}
-			for _, dev := range iface {
+			for _, dev := range devs {
 				if dev.Name == name {
 					ifaces = append(ifaces, dev)
 					break
@@ -114,24 +115,20 @@ func captureFromInterface(name string) {
 			sport, dport uint16
 		)
 
-		// Safely handle IPv4 only
 		switch ipLayer := networkLayer.(type) {
 		case *layers.IPv4:
 			srcIP = ipLayer.SrcIP.String()
 			dstIP = ipLayer.DstIP.String()
 			proto = ipLayer.Protocol.String()
 		default:
-			continue // skip non-IPv4 (like IPv6)
+			continue
 		}
-
-		log.Printf("Packet captured on %s (src=%s, dst=%s)", name, srcIP, dstIP)
 
 		dir := "inbound"
 		if localIPs[srcIP] {
 			dir = "outbound"
 		}
 
-		// Detect port and transport
 		if t := packet.TransportLayer(); t != nil {
 			switch layer := t.(type) {
 			case *layers.TCP:
@@ -149,17 +146,18 @@ func captureFromInterface(name string) {
 			updateFlow(entry, len(packet.Data()))
 		} else {
 			netflowBuffer[key] = &NetFlowEntry{
-				Interface: name,
-				Direction: dir,
-				SrcIP:     srcIP,
-				DstIP:     dstIP,
-				SrcPort:   sport,
-				DstPort:   dport,
-				Protocol:  proto,
-				Packets:   1,
-				Bytes:     len(packet.Data()),
-				StartTime: now,
-				EndTime:   now,
+				Interface:  name,
+				Direction:  dir,
+				SrcIP:      srcIP,
+				DstIP:      dstIP,
+				SrcPort:    sport,
+				DstPort:    dport,
+				Protocol:   proto,
+				Packets:    1,
+				Bytes:      len(packet.Data()),
+				StartTime:  now,
+				EndTime:    now,
+				SystemName: "", // will be set by pushMetrics
 			}
 		}
 		netflowMu.Unlock()
@@ -170,7 +168,7 @@ func GetNetFlowEntries() []NetFlowEntry {
 	netflowMu.Lock()
 	defer netflowMu.Unlock()
 
-	result := []NetFlowEntry{}
+	result := make([]NetFlowEntry, 0, len(netflowBuffer))
 	for _, v := range netflowBuffer {
 		result = append(result, *v)
 	}

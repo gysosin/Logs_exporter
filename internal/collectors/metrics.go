@@ -33,6 +33,22 @@ func GenerateMetrics() string {
 	sb.WriteString(fmt.Sprintf("logs_exporter_memory_bytes{type=\"free\"} %d\n\n", mem.Free))
 
 	// Memory (per-process)
+
+	// Process Info (extended)
+	perProcDetails := GetPerProcessDetails()
+	sb.WriteString("# HELP logs_exporter_process_info Static details about processes including user and command.\n")
+	sb.WriteString("# TYPE logs_exporter_process_info gauge\n")
+	for _, pd := range perProcDetails {
+		if pd.Name == "" {
+			continue
+		}
+		safeName := escapeQuotes(pd.Name)
+		safeUser := escapeQuotes(pd.Username)
+		safeCmd := escapeQuotes(pd.Cmdline)
+		sb.WriteString(fmt.Sprintf("logs_exporter_process_info{process=\"%s\", pid=\"%d\", user=\"%s\", cmdline=\"%s\", start=\"%d\"} 1\n", safeName, pd.PID, safeUser, safeCmd, pd.CreateTime))
+	}
+	sb.WriteString("\n")
+
 	perProcMem := GetPerProcessMemory()
 	sb.WriteString("# HELP logs_exporter_process_memory_bytes Process working set size in bytes.\n")
 	sb.WriteString("# TYPE logs_exporter_process_memory_bytes gauge\n")
