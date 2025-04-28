@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Use a custom name so the EXE comes out as FolderMonitor.exe -->
+    <AssemblyName>FolderMonitor</AssemblyName>
+    <OutputType>Exe</OutputType>
+
+    <!-- Must target Windows for ETW support -->
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
+    <UseWindowsCompatibility>true</UseWindowsCompatibility>
+
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Publish as a single, self-contained EXE -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent"
+                      Version="3.1.20" />
+    <PackageReference Include="System.Management"
+                      Version="9.0.4" />
+  </ItemGroup>
+</Project>

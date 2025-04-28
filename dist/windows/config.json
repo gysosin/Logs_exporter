@@ -1,0 +1,9 @@
+{
+  "port": "9182",
+  "system_name": "XYFO-LAPTOP",
+  "nats_url": "nats://127.0.0.1:4222",
+  "mode": "scrape",
+  "watch_dir": "C:\logsw",
+  "watch_window_ms": 2000,
+  "netflow_interfaces": []
+}

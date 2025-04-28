@@ -1,6 +1,8 @@
 {
   "port": "9182",
   "nats_url": "nats://127.0.0.1:4222",
-  "mode": "push",
+  "mode": "scrape",
+  "watch_dir": "C:\\Users\\Public",
+  "watch_window_ms": 2000,
   "netflow_interfaces": []
 }
